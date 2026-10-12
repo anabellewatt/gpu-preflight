@@ -159,14 +159,15 @@ Popular AI repos move between owners as they grow. ComfyUI and text-generation-w
 
 ## What I'd improve with more time
 
-- Parse `pyproject.toml` and lockfiles (`poetry.lock`, `uv.lock`) so unpinned and modern-packaged deps get checked too; many AI repos have moved there
+- Parse `pyproject.toml` and lockfiles (`poetry.lock`, `uv.lock`) so modern-packaged repos get checked too. Many AI repos have moved there; `huggingface/transformers`, for example, currently skips the OSV check
+- Use the canonical repo name after a redirect. Right now the contributors and dependency-file calls still use the old name, so each one redirects again; switching to the new name halves the GitHub calls for renamed repos
 - GPU-specific checks: flag pinned CUDA / `torch` versions and compare them with the CUDA versions available on RunPod base images
 - A "Deploy to RunPod" button that pre-fills a Pod template for repos that pass
-- Page through contributors for very large repos (currently top 100)
+- Deploy from the included `Dockerfile` as a custom RunPod template, so the pod starts the app on boot with no manual steps
 - Replace the in-memory cache with Redis so it survives restarts and scales across Pods
+- Page through contributors for very large repos (currently top 100)
 - Show OSV severity scores, not just advisory counts
 - Run the GitHub calls concurrently
-- Deploy from the included `Dockerfile` as a custom RunPod template, so the pod starts the app on boot with no manual steps
 
 ## AI usage
 
