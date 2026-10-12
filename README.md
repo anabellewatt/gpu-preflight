@@ -170,4 +170,17 @@ Popular AI repos move between owners as they grow. ComfyUI and text-generation-w
 
 ## AI usage
 
-Built with help from Claude for scaffolding the code, tests and README. I reviewed every file, ran the tests, and deployed it myself. 
+I built this with Claude. Here's who did what:
+
+**Claude**
+- Proposed use cases and the RunPod framing
+- Scaffolded the backend, frontend and tests
+- Drafted the README and the slides
+- Diagnosed the `301` from my log and wrote the fix
+
+**Me**
+- Chose the idea and the AI-repo angle
+- Ran and tested it locally, and found the renamed-repo failures
+- Deployed it on a RunPod CPU pod
+- Traced live requests and picked the demo repos
+- Reviewed every file so I can explain and change it
