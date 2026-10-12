@@ -16,6 +16,7 @@ Neither API answers the question alone. The backend joins them: it reads the dep
 - **Live app:** https://crel0fa1ys0gu3-8000.proxy.runpod.net
 - **Failure demo:** https://crel0fa1ys0gu3-8000.proxy.runpod.net/?simulate=osv_down
 - **Health check:** https://crel0fa1ys0gu3-8000.proxy.runpod.net/health
+- **Presentation:** [GPU Pre-flight Walkthrough.pptx](GPU%20Pre-flight%20Walkthrough.pptx)
 
 ## Architecture
 
