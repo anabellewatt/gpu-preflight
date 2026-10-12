@@ -65,6 +65,19 @@ def test_osv_down_degrades_gracefully(client):
 
 
 @respx.mock
+@pytest.mark.parametrize("demo_mode, osv_status", [(True, "unavailable"), (False, "ok")])
+def test_simulate_osv_down_requires_demo_mode(client, monkeypatch, demo_mode, osv_status):
+    monkeypatch.setattr("app.main.DEMO_MODE", demo_mode)
+    mock_github(respx)
+    respx.post(OSV).respond(json={"results": [{}]})
+
+    r = client.get("/api/check", params={"repo": "acme/widget", "simulate": "osv_down"})
+
+    assert r.status_code == 200
+    assert r.json()["security"]["status"] == osv_status
+
+
+@respx.mock
 def test_github_rate_limit_returns_429(client):
     respx.get(GH).respond(status_code=403, headers={"x-ratelimit-remaining": "0", "retry-after": "60"})
 
