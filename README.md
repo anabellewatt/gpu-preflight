@@ -38,14 +38,14 @@ The frontend is a single static page served by the same FastAPI app, so there's 
 3. **GitHub (required)**: repo metadata, top 100 contributors, and the first manifest found at the repo root.
 4. **Parse**: count all dependencies, then keep only pinned ones (`pkg==1.2.3`, or npm `^1.2.3` → `1.2.3`), capped at 50. OSV needs a concrete version for a meaningful answer, and the pinned share is itself a reproducibility signal.
 5. **OSV (optional)**: one `POST /v1/querybatch` for all packages.
-6. **Score**: start at 100, subtract for bus factor ≤ 2, for advisories, and for stale pushes. Archived repos are flagged outright.
+6. **Score**: start at 100, subtract for bus factor ≤ 2, for advisories, and for stale pushes. Archived repos score 0 and are labelled "Archived".
 
 ## Failure handling
 
 | Situation | What the user sees | HTTP |
 |---|---|---|
 | Invalid input | "Enter a GitHub repo as owner/name…" | 400 |
-| Repo missing or private | "Repository not found" | 404 |
+| Repo missing or private | "Repository not found (or it is private)" | 404 |
 | GitHub rate limit hit | Error with "try again in ~N min" (from `Retry-After` / `X-RateLimit-Reset`) | 429 |
 | GitHub timeout / 5xx | Retried once, then a clear error | 504 / 502 |
 | **OSV down** | **Report still shown** with a warning banner; vulnerabilities marked "not checked" | 200 |
@@ -61,15 +61,17 @@ Without `DEMO_MODE=1` the flag is ignored, so it can't be used to break a normal
 
 ### Tracing a request
 
-Every upstream call is logged with its status and timing. On the pod, run `tail -f server.log`. Example output (timings vary):
+Every upstream call is logged with its status and timing. On the pod, run `tail -f server.log`. This is a real check from the live pod (`httpx` request lines removed):
 
 ```
-INFO    check   repo='AUTOMATIC1111/stable-diffusion-webui'
-INFO    GitHub  GET /repos/AUTOMATIC1111/stable-diffusion-webui -> 200 (180ms)
-INFO    GitHub  GET /repos/AUTOMATIC1111/stable-diffusion-webui/contributors -> 200 (240ms)
-INFO    GitHub  GET /repos/AUTOMATIC1111/stable-diffusion-webui/contents/requirements.txt -> 200 (130ms)
-INFO    OSV.dev POST /v1/querybatch -> 200 (310ms)
+02:45:58 INFO    check   repo='AUTOMATIC1111/stable-diffusion-webui'
+02:45:58 INFO    GitHub  GET /repos/AUTOMATIC1111/stable-diffusion-webui -> 200 (297ms)
+02:45:59 INFO    GitHub  GET /repos/AUTOMATIC1111/stable-diffusion-webui/contributors -> 200 (344ms)
+02:45:59 INFO    GitHub  GET /repos/AUTOMATIC1111/stable-diffusion-webui/contents/requirements.txt -> 200 (142ms)
+02:46:00 INFO    OSV.dev POST /v1/querybatch -> 200 (883ms)
 ```
+
+Checking the same repo again within 10 minutes logs only the `check` line, because the report comes from the cache.
 
 ## Environment variables
 
@@ -84,7 +86,7 @@ INFO    OSV.dev POST /v1/querybatch -> 200 (310ms)
 
 | API | Key needed | Limit | How the app copes |
 |---|---|---|---|
-| GitHub REST | Optional `GITHUB_TOKEN` | 60 req/hr without a token, 5,000 req/hr with one | ≤ 4 calls per check, 10-min cache, rate limit surfaced to the user with a wait time |
+| GitHub REST | Optional `GITHUB_TOKEN` | 60 req/hr without a token, 5,000 req/hr with one | ≤ 4 calls per check (a renamed repo adds a redirect hop per call), 10-min cache, rate limit surfaced to the user with a wait time |
 | OSV.dev | None | No published quota | One batch request per check instead of one per package |
 
 ## Run locally
@@ -151,6 +153,9 @@ app/
   main.py      # FastAPI routes and error → HTTP mapping
   static/index.html  # the whole frontend: loading, error, partial and success states
 tests/test_api.py
+Dockerfile           # for the custom RunPod template alternative
+requirements.txt     # runtime deps; requirements-dev.txt adds pytest + respx
+GPU Pre-flight Walkthrough.pdf
 ```
 
 ## Technical challenge: renamed repos
@@ -160,7 +165,7 @@ Popular AI repos move between owners as they grow. ComfyUI and text-generation-w
 ## What I'd improve with more time
 
 - Parse `pyproject.toml` and lockfiles (`poetry.lock`, `uv.lock`) so modern-packaged repos get checked too. Many AI repos have moved there; `huggingface/transformers`, for example, currently skips the OSV check
-- Use the canonical repo name after a redirect. Right now the contributors and dependency-file calls still use the old name, so each one redirects again; switching to the new name halves the GitHub calls for renamed repos
+- Use the canonical repo name after a redirect. Right now the contributors and dependency-file calls still use the old name, so each one is redirected again. Switching to the new name after the first call would save 2–3 GitHub requests per check of a renamed repo
 - GPU-specific checks: flag pinned CUDA / `torch` versions and compare them with the CUDA versions available on RunPod base images
 - A "Deploy to RunPod" button that pre-fills a Pod template for repos that pass
 - Deploy from the included `Dockerfile` as a custom RunPod template, so the pod starts the app on boot with no manual steps
