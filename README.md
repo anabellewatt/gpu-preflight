@@ -127,7 +127,7 @@ This app runs on a **CPU Pod** (2 vCPU, 8 GB RAM, about $0.08/hr). It only calls
    - Environment variables: `GITHUB_TOKEN` = your token, `DEMO_MODE` = `1`
 3. Deploy. When the pod is running, open **Connect → Web Terminal** and run:
    ```bash
-   git clone https://github.com/<your-username>/gpu-preflight.git && cd gpu-preflight
+   git clone https://github.com/anabellewatt/gpu-preflight.git && cd gpu-preflight
    PY=$(command -v python3.12 || command -v python3.11 || command -v python3.10 || command -v python3)
    $PY --version
    $PY -m pip install -r requirements.txt
