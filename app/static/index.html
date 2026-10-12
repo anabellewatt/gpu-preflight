@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPU Pre-flight</title>
+<style>
+  :root { --bg:#f7f7f5; --card:#fff; --ink:#1c1c1c; --muted:#6b6b6b; --line:#e4e4e0;
+          --good:#1f8a4c; --warn:#b7791f; --bad:#c53030; --accent:#5b3cc4; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.5 system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:720px; margin:0 auto; padding:48px 16px; }
+  h1 { margin:0 0 4px; font-size:28px; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  form { display:flex; gap:8px; }
+  input { flex:1; padding:12px 14px; border:1px solid var(--line); border-radius:8px; font-size:16px; }
+  button { padding:12px 18px; border:0; border-radius:8px; background:var(--accent); color:#fff; font-size:16px; cursor:pointer; }
+  button:disabled { opacity:.6; cursor:wait; }
+  .examples { margin-top:8px; font-size:14px; color:var(--muted); }
+  .examples a { color:var(--accent); cursor:pointer; margin-right:10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-top:20px; }
+  .error { border-color:var(--bad); color:var(--bad); }
+  .banner { background:#fff8e6; border:1px solid #f0d58a; border-radius:8px; padding:10px 12px; margin-bottom:16px; font-size:14px; }
+  .head { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+  .score { font-size:40px; font-weight:700; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:13px; font-weight:600; color:#fff; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin:16px 0; }
+  .stat { border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .stat b { display:block; font-size:22px; }
+  .stat span { color:var(--muted); font-size:13px; }
+  h3 { margin:20px 0 8px; font-size:16px; }
+  ul { margin:0; padding-left:18px; }
+  .muted { color:var(--muted); font-size:14px; }
+  .spinner { width:22px; height:22px; border:3px solid var(--line); border-top-color:var(--accent); border-radius:50%;
+             animation:spin 1s linear infinite; display:inline-block; vertical-align:middle; margin-right:8px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<main>
+  <h1>GPU Pre-flight ✈️</h1>
+  <p class="sub">Check an open-source AI repo <b>before</b> you spin up a GPU for it. Maintainers, license and pinning from GitHub, plus known vulnerabilities from OSV.dev.</p>
+  <form id="f">
+    <input id="repo" placeholder="owner/name or https://github.com/owner/name" autocomplete="off" required maxlength="200">
+    <button id="btn">Check</button>
+  </form>
+  <div class="examples">Try:
+    <a data-r="comfyanonymous/ComfyUI">ComfyUI</a>
+    <a data-r="AUTOMATIC1111/stable-diffusion-webui">SD WebUI</a>
+    <a data-r="oobabooga/text-generation-webui">text-gen-webui</a>
+  </div>
+  <div id="out"></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const color = l => l === "Archived" ? "#555" : l === "Healthy" ? "var(--good)" : l === "Needs attention" ? "var(--warn)" : "var(--bad)";
+
+document.querySelectorAll(".examples a").forEach(a => a.onclick = () => { $("#repo").value = a.dataset.r; run(); });
+$("#f").onsubmit = e => { e.preventDefault(); run(); };
+
+async function run() {
+  const repo = $("#repo").value.trim();
+  if (!repo) return;
+  $("#btn").disabled = true;
+  $("#out").innerHTML = `<div class="card"><span class="spinner"></span>Running pre-flight checks with GitHub and OSV.dev…</div>`;
+  try {
+    const sim = new URLSearchParams(location.search).get("simulate");
+    const res = await fetch(`/api/check?repo=${encodeURIComponent(repo)}${sim ? `&simulate=${encodeURIComponent(sim)}` : ""}`);
+    const data = await res.json();
+    if (!res.ok) throw data;
+    render(data);
+  } catch (err) {
+    const msg = err.error || "Something went wrong reaching the server.";
+    const retry = err.retry_after ? ` Try again in about ${Math.ceil(err.retry_after / 60)} min.` : "";
+    $("#out").innerHTML = `<div class="card error"><b>Couldn't check that repo.</b><br>${esc(msg)}.${esc(retry)}</div>`;
+  } finally {
+    $("#btn").disabled = false;
+  }
+}
+
+function render(d) {
+  const s = d.security, m = d.maintainers;
+  let banner = "";
+  if (s.status === "unavailable") banner = `<div class="banner">⚠️ OSV.dev is unavailable right now, so vulnerabilities weren't checked. Maintainer data is still shown.</div>`;
+  if (d.archived) banner += `<div class="banner">📦 This repo is archived — no more fixes are coming.</div>`;
+  let pin = "";
+  if (s.total_deps && s.checked < s.total_deps) pin = `<p class="muted">${s.total_deps - s.checked} of ${s.total_deps} dependencies aren't pinned, so they can't be checked and your pod may install different versions than the authors tested.</p>`;
+  let sec;
+  if (s.status === "no_manifest") sec = `<p class="muted">No requirements.txt or package.json found at the repo root.</p>`;
+  else if (s.status === "unavailable") sec = `<p class="muted">Not checked.</p>`;
+  else if (!s.vulnerable.length) sec = `<p>✅ No known vulnerabilities in ${s.checked} pinned dependencies (${esc(s.manifest)}).</p>`;
+  else sec = `<ul>${s.vulnerable.map(v => `<li><b>${esc(v.name)}@${esc(v.version)}</b> — ${v.count} advisories (${v.vulns.map(esc).join(", ")})</li>`).join("")}</ul>`;
+
+  $("#out").innerHTML = `<div class="card">
+    ${banner}
+    <div class="head">
+      <div><a href="${esc(d.url)}" target="_blank" rel="noopener"><b>${esc(d.repo)}</b></a>
+        <div class="muted">${esc(d.description)}</div></div>
+      <div style="text-align:right"><div class="score">${d.score}</div>
+        <span class="pill" style="background:${color(d.label)}">${esc(d.label)}</span></div>
+    </div>
+    <div class="grid">
+      <div class="stat"><b>${m.bus_factor}</b><span>bus factor</span></div>
+      <div class="stat"><b>${m.contributors}${m.contributors === 100 ? "+" : ""}</b><span>contributors</span></div>
+      <div class="stat"><b>${d.days_since_push}d</b><span>since last push</span></div>
+      <div class="stat"><b>${s.status === "ok" ? s.vulnerable.length : "—"}</b><span>vulnerable deps</span></div>
+      <div class="stat"><b>${s.total_deps ? Math.round(100 * s.checked / s.total_deps) + "%" : "—"}</b><span>deps pinned</span></div>
+      <div class="stat"><b>${esc(d.license)}</b><span>license</span></div>
+    </div>
+    <h3>Top maintainers</h3>
+    <ul>${m.top.map(t => `<li>${esc(t.login)} — ${t.commits} commits</li>`).join("")}</ul>
+    <h3>Dependency security</h3>${sec}${pin}
+    ${d.cached ? `<p class="muted">Served from cache (saves GitHub rate limit).</p>` : ""}
+  </div>`;
+}
+</script>
+</body>
+</html>
