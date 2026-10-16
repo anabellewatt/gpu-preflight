@@ -52,25 +52,32 @@
   <div id="out"></div>
 </main>
 <script>
+// Tiny helpers: $ = querySelector; esc = HTML-escape anything from the API before
+// putting it in innerHTML (repo descriptions are user-controlled, so this prevents XSS).
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// Label -> pill colour. Labels come from score() in service.py.
 const color = l => l === "Archived" ? "#555" : l === "Healthy" ? "var(--good)" : l === "Needs attention" ? "var(--warn)" : "var(--bad)";
 
+// Example links fill the input and run immediately; the form submits via fetch, not a page reload.
 document.querySelectorAll(".examples a").forEach(a => a.onclick = () => { $("#repo").value = a.dataset.r; run(); });
 $("#f").onsubmit = e => { e.preventDefault(); run(); };
 
+// Call /api/check and render the result or a friendly error.
 async function run() {
   const repo = $("#repo").value.trim();
   if (!repo) return;
   $("#btn").disabled = true;
   $("#out").innerHTML = `<div class="card"><span class="spinner"></span>Running pre-flight checks with GitHub and OSV.dev…</div>`;
   try {
+    // Pass ?simulate=osv_down from the page URL through to the API (only honoured when DEMO_MODE=1).
     const sim = new URLSearchParams(location.search).get("simulate");
     const res = await fetch(`/api/check?repo=${encodeURIComponent(repo)}${sim ? `&simulate=${encodeURIComponent(sim)}` : ""}`);
     const data = await res.json();
-    if (!res.ok) throw data;
+    if (!res.ok) throw data;  // error JSON is {error, service, retry_after}; handled in catch
     render(data);
   } catch (err) {
+    // err is either our API's error JSON or a network/parse error (no .error field).
     const msg = err.error || "Something went wrong reaching the server.";
     const retry = err.retry_after ? ` Try again in about ${Math.ceil(err.retry_after / 60)} min.` : "";
     $("#out").innerHTML = `<div class="card error"><b>Couldn't check that repo.</b><br>${esc(msg)}.${esc(retry)}</div>`;
@@ -79,13 +86,17 @@ async function run() {
   }
 }
 
+// Build the report card from the JSON returned by check_repo() in service.py.
 function render(d) {
   const s = d.security, m = d.maintainers;
+  // Banners: OSV down (graceful degradation) and archived repo.
   let banner = "";
   if (s.status === "unavailable") banner = `<div class="banner">⚠️ OSV.dev is unavailable right now, so vulnerabilities weren't checked. Maintainer data is still shown.</div>`;
   if (d.archived) banner += `<div class="banner">📦 This repo is archived — no more fixes are coming.</div>`;
+  // Reproducibility note: unpinned deps can't be checked against OSV and may change between installs.
   let pin = "";
   if (s.total_deps && s.checked < s.total_deps) pin = `<p class="muted">${s.total_deps - s.checked} of ${s.total_deps} dependencies aren't pinned, so they can't be checked and your pod may install different versions than the authors tested.</p>`;
+  // Security section: one branch per security.status (no_manifest / unavailable / ok).
   let sec;
   if (s.status === "no_manifest") sec = `<p class="muted">No requirements.txt or package.json found at the repo root.</p>`;
   else if (s.status === "unavailable") sec = `<p class="muted">Not checked.</p>`;
@@ -102,6 +113,7 @@ function render(d) {
     </div>
     <div class="grid">
       <div class="stat"><b>${m.bus_factor}</b><span>bus factor</span></div>
+      <!-- GitHub returns at most 100 contributors per page, so 100 means "100 or more" -->
       <div class="stat"><b>${m.contributors}${m.contributors === 100 ? "+" : ""}</b><span>contributors</span></div>
       <div class="stat"><b>${d.days_since_push}d</b><span>since last push</span></div>
       <div class="stat"><b>${s.status === "ok" ? s.vulnerable.length : "—"}</b><span>vulnerable deps</span></div>
